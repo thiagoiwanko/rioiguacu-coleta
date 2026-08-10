@@ -1,0 +1,74 @@
+name: Atualizar dados do Rio Iguaçu
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atualizar-dados
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Configurar Chrome
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce
+
+      - name: Configurar Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Rodar coleta
+        env:
+          ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
+          ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
+        run: python scrape.py
+
+      - name: Publicar no repositório privado
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          SRC="$GITHUB_WORKSPACE/public"
+          git clone "https://x-access-token:${PRIVATE_REPO_PAT}@github.com/thiagoiwanko/rioiguacu.git" /tmp/rioiguacu-privado
+          cd /tmp/rioiguacu-privado
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cp "$SRC/data.json" public/data.json
+          cp "$SRC/historico_diario.csv" public/historico_diario.csv
+          git add public/data.json public/historico_diario.csv
+          if git diff --staged --quiet; then
+            echo "Sem mudança em data.json/historico_diario.csv; não publica nesta rodada."
+            exit 0
+          fi
+          mkdir -p /tmp/coleta_atual
+          cp public/data.json /tmp/coleta_atual/
+          cp public/historico_diario.csv /tmp/coleta_atual/
+          for i in $(seq 1 12); do
+            git commit -m "Atualiza dados do Rio Iguaçu" -q || true
+            if git push; then
+              echo "Push concluído na tentativa $i."
+              exit 0
+            fi
+            echo "Push rejeitado (tentativa $i/12): outra execução chegou primeiro. Sincronizando..."
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/coleta_atual/data.json public/
+            cp /tmp/coleta_atual/historico_diario.csv public/
+            git add public/data.json public/historico_diario.csv
+            sleep $((RANDOM % 10 + 3))
+          done
+          echo "Falha ao empurrar as mudanças após 12 tentativas."
+          exit 1
+
