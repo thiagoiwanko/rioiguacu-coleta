@@ -30,6 +30,14 @@ jobs:
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
+      - name: Baixar dados atuais do repositório privado
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          mkdir -p public
+          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/data.json" -o public/data.json || echo "sem data.json anterior"
+          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/historico_diario.csv" -o public/historico_diario.csv || echo "sem historico_diario.csv anterior"
+
       - name: Rodar coleta
         env:
           ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
