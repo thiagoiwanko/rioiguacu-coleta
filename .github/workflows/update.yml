@@ -57,7 +57,6 @@ jobs:
           cp "$SRC/historico_diario.csv" public/historico_diario.csv
           git add public/data.json public/historico_diario.csv
           if git diff --staged --quiet; then
-            echo "Sem mudança em data.json/historico_diario.csv; não publica nesta rodada."
             exit 0
           fi
           mkdir -p /tmp/coleta_atual
@@ -66,10 +65,8 @@ jobs:
           for i in $(seq 1 12); do
             git commit -m "Atualiza dados do Rio Iguaçu" -q || true
             if git push; then
-              echo "Push concluído na tentativa $i."
               exit 0
             fi
-            echo "Push rejeitado (tentativa $i/12): outra execução chegou primeiro. Sincronizando..."
             git fetch origin main
             git reset --hard origin/main
             cp /tmp/coleta_atual/data.json public/
@@ -77,6 +74,5 @@ jobs:
             git add public/data.json public/historico_diario.csv
             sleep $((RANDOM % 10 + 3))
           done
-          echo "Falha ao empurrar as mudanças após 12 tentativas."
           exit 1
 
