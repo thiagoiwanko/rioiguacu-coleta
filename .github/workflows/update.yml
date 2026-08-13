@@ -35,18 +35,8 @@ jobs:
           PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
         run: |
           mkdir -p public
-          if curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/data.json" -o public/data.json; then
-            echo "data.json baixado: $(wc -l < public/data.json) linhas"
-          else
-            echo "FALHA ao baixar data.json"
-            rm -f public/data.json
-          fi
-          if curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/historico_diario.csv" -o public/historico_diario.csv; then
-            echo "historico_diario.csv baixado: $(wc -l < public/historico_diario.csv) linhas"
-          else
-            echo "FALHA ao baixar historico_diario.csv"
-            rm -f public/historico_diario.csv
-          fi
+          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/data.json" -o public/data.json || rm -f public/data.json
+          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/historico_diario.csv" -o public/historico_diario.csv || rm -f public/historico_diario.csv
 
       - name: Rodar coleta
         env:
