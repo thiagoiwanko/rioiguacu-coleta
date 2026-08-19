@@ -78,8 +78,8 @@ COTAS_BAIRROS = [
 
 COTAS_ALERTA_DEFESA_CIVIL = [
     (3.70, "OBSERVAÇÃO"),
-    (4.20, "ATENÇÃO (INUNDAÇÃO)"),
-    (5.00, "ALERTA (INUNDAÇÃO)"),
+    (4.20, "ATENÇÃO"),
+    (5.00, "ALERTA"),
     (5.50, "EMERGÊNCIA"),
     (6.50, "GRANDE ENCHENTE"),
 ]
