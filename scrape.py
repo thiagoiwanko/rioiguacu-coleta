@@ -461,6 +461,9 @@ URL_CHUVA_7D = (
 )
 
 
+CHUVA_7D_DIAGNOSTICO = ""
+
+
 def buscar_chuva_7dias():
     try:
         resp = requests.get(URL_CHUVA_7D, timeout=25)
@@ -482,6 +485,8 @@ def buscar_chuva_7dias():
             })
         return saida
     except Exception as erro:
+        global CHUVA_7D_DIAGNOSTICO
+        CHUVA_7D_DIAGNOSTICO = f"{type(erro).__name__}: {erro}"[:300]
         log(f"chuva 7 dias indisponivel: {erro}")
         return []
 
@@ -492,6 +497,7 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
 
     ultima = historico[-1]
     regua = float(ultima["regua_m"])
+    semana_chuva = buscar_chuva_7dias()
     return {
         "versao": APP_VERSION,
         "fonte": fonte_historico,
@@ -508,7 +514,8 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
         "cotas_alerta": [{"nivel": nivel, "descricao": desc} for nivel, desc in COTAS_ALERTA_DEFESA_CIVIL + COTAS_ESTIAGEM],
         "janela_historico_horas": JANELA_HISTORICO_HORAS,
         "janela_previsao_horas": JANELA_PREVISAO_HORAS,
-        "chuva_7dias": buscar_chuva_7dias(),
+        "chuva_7dias": semana_chuva,
+        "chuva_7dias_diagnostico": CHUVA_7D_DIAGNOSTICO,
     }
 
 
