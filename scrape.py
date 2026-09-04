@@ -452,6 +452,40 @@ def verificar_alerta_previsao(historico, previsao):
     return f"Previsão para daqui a {horas_reais} horas ({quando_fmt}): {valor_fmt} m."
 
 
+
+URL_CHUVA_7D = (
+    "https://api.open-meteo.com/v1/forecast"
+    "?latitude=-26.2281&longitude=-51.0803"
+    "&daily=weather_code,precipitation_sum,precipitation_probability_max"
+    "&timezone=America%2FSao_Paulo&forecast_days=7"
+)
+
+
+def buscar_chuva_7dias():
+    try:
+        resp = requests.get(URL_CHUVA_7D, timeout=25)
+        resp.raise_for_status()
+        diario = resp.json().get("daily") or {}
+        datas = diario.get("time") or []
+        chuva = diario.get("precipitation_sum") or []
+        prob = diario.get("precipitation_probability_max") or []
+        codigo = diario.get("weather_code") or []
+        saida = []
+        for i, data in enumerate(datas):
+            if i >= len(chuva):
+                break
+            saida.append({
+                "data": data,
+                "chuva_mm": round(float(chuva[i] or 0), 1),
+                "probabilidade_pct": int(prob[i] or 0) if i < len(prob) else 0,
+                "codigo_tempo": int(codigo[i] or 0) if i < len(codigo) else 0,
+            })
+        return saida
+    except Exception as erro:
+        log(f"chuva 7 dias indisponivel: {erro}")
+        return []
+
+
 def montar_payload(historico, previsao, fonte_historico, url_historico):
     if not historico:
         raise RuntimeError("nenhuma medição foi encontrada (nem via ANA, nem via fonte redundante)")
@@ -474,6 +508,7 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
         "cotas_alerta": [{"nivel": nivel, "descricao": desc} for nivel, desc in COTAS_ALERTA_DEFESA_CIVIL + COTAS_ESTIAGEM],
         "janela_historico_horas": JANELA_HISTORICO_HORAS,
         "janela_previsao_horas": JANELA_PREVISAO_HORAS,
+        "chuva_7dias": buscar_chuva_7dias(),
     }
 
 
