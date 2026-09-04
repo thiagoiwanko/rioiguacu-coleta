@@ -464,31 +464,52 @@ URL_CHUVA_7D = (
 CHUVA_7D_DIAGNOSTICO = ""
 
 
+CHUVA_7D_CABECALHOS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                  " (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "pt-BR,pt;q=0.9",
+}
+
+
+def _chuva_7dias_uma_vez():
+    resp = requests.get(URL_CHUVA_7D, headers=CHUVA_7D_CABECALHOS, timeout=45)
+    resp.raise_for_status()
+    diario = resp.json().get("daily") or {}
+    datas = diario.get("time") or []
+    chuva = diario.get("precipitation_sum") or []
+    prob = diario.get("precipitation_probability_max") or []
+    codigo = diario.get("weather_code") or []
+    saida = []
+    for i, data in enumerate(datas):
+        if i >= len(chuva):
+            break
+        saida.append({
+            "data": data,
+            "chuva_mm": round(float(chuva[i] or 0), 1),
+            "probabilidade_pct": int(prob[i] or 0) if i < len(prob) else 0,
+            "codigo_tempo": int(codigo[i] or 0) if i < len(codigo) else 0,
+        })
+    return saida
+
+
 def buscar_chuva_7dias():
-    try:
-        resp = requests.get(URL_CHUVA_7D, timeout=25)
-        resp.raise_for_status()
-        diario = resp.json().get("daily") or {}
-        datas = diario.get("time") or []
-        chuva = diario.get("precipitation_sum") or []
-        prob = diario.get("precipitation_probability_max") or []
-        codigo = diario.get("weather_code") or []
-        saida = []
-        for i, data in enumerate(datas):
-            if i >= len(chuva):
-                break
-            saida.append({
-                "data": data,
-                "chuva_mm": round(float(chuva[i] or 0), 1),
-                "probabilidade_pct": int(prob[i] or 0) if i < len(prob) else 0,
-                "codigo_tempo": int(codigo[i] or 0) if i < len(codigo) else 0,
-            })
-        return saida
-    except Exception as erro:
-        global CHUVA_7D_DIAGNOSTICO
-        CHUVA_7D_DIAGNOSTICO = f"{type(erro).__name__}: {erro}"[:300]
-        log(f"chuva 7 dias indisponivel: {erro}")
-        return []
+    global CHUVA_7D_DIAGNOSTICO
+    ultimo_erro = None
+    for tentativa in range(3):
+        try:
+            semana = _chuva_7dias_uma_vez()
+            if semana:
+                CHUVA_7D_DIAGNOSTICO = ""
+                return semana
+            ultimo_erro = RuntimeError("resposta sem dias")
+        except Exception as erro:
+            ultimo_erro = erro
+        log(f"chuva 7 dias tentativa {tentativa + 1} falhou: {ultimo_erro}")
+        if tentativa < 2:
+            time.sleep(5 + tentativa * 10)
+    CHUVA_7D_DIAGNOSTICO = f"{type(ultimo_erro).__name__}: {ultimo_erro}"[:300]
+    return []
 
 
 def montar_payload(historico, previsao, fonte_historico, url_historico):
