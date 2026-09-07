@@ -21,6 +21,8 @@ INTERVALO_MINIMO_MINUTOS = int(os.environ.get("CIDADES_INTERVALO_MIN", "55"))
 PAUSA_ENTRE_ESTACOES_S = 8
 
 FONTE_ANA = "ANA - Agencia Nacional de Aguas e Saneamento Basico"
+FONTE_ALERTAS = ("Hidroinfo / Instituto Água e Terra (IAT) - Governo do Paraná, geopr.iat.pr.gov.br")
+
 ATRASO_AVISO_MIN = int(os.environ.get("CIDADES_ATRASO_AVISO_MIN", "150"))
 
 CIDADES = [
@@ -44,6 +46,14 @@ CIDADES = [
     },
     {
         "slug": "sao-mateus-do-sul",
+        "alertas": [
+            {"nivel": 4.00, "descricao": "ALARME"},
+            {"nivel": 3.85, "descricao": "ALERTA"},
+            {"nivel": 3.60, "descricao": "ATENÇÃO"},
+            {"nivel": 0.40, "descricao": "ATENÇÃO (ESTIAGEM)"},
+            {"nivel": 0.30, "descricao": "ALERTA (ESTIAGEM)"},
+            {"nivel": 0.14, "descricao": "ESCASSEZ HÍDRICA"},
+        ],
         "nome": "São Mateus do Sul",
         "uf": "PR",
         "codigo_ana": 65060001,
@@ -63,6 +73,14 @@ CIDADES = [
     },
     {
         "slug": "fluviopolis",
+        "alertas": [
+            {"nivel": 4.20, "descricao": "ALARME"},
+            {"nivel": 4.00, "descricao": "ALERTA"},
+            {"nivel": 3.85, "descricao": "ATENÇÃO"},
+            {"nivel": 0.75, "descricao": "ATENÇÃO (ESTIAGEM)"},
+            {"nivel": 0.63, "descricao": "ALERTA (ESTIAGEM)"},
+            {"nivel": 0.48, "descricao": "ESCASSEZ HÍDRICA"},
+        ],
         "nome": "Fluviópolis",
         "uf": "PR",
         "codigo_ana": 65220001,
@@ -250,6 +268,7 @@ def montar_payload(cidade, historico, semana):
         "codigo_estacao": cidade["codigo_ana"],
         "zero_regua_m": cidade.get("zero_regua_m"),
         "fonte": FONTE_ANA,
+        "fonte_alertas": FONTE_ALERTAS if cidade.get("alertas") else None,
         "url_historico": "https://www.snirh.gov.br/hidrotelemetria/",
         "atualizado_em": iso(agora_br()),
         "historico": historico,
@@ -257,7 +276,7 @@ def montar_payload(cidade, historico, semana):
         "tendencia": calcular_tendencia(historico),
         "chuva_7dias": semana,
         "cotas_bairros": cidade.get("enchentes") or [],
-        "cotas_alerta": [],
+        "cotas_alerta": cidade.get("alertas") or [],
         "previsao": [],
         "previsao_disponivel": False,
         "situacao": None,
@@ -266,7 +285,7 @@ def montar_payload(cidade, historico, semana):
         "atraso_aviso_min": ATRASO_AVISO_MIN,
         "tem_enchentes_historicas": bool(cidade.get("enchentes")),
         "tem_bairros": False,
-        "tem_alertas": False,
+        "tem_alertas": bool(cidade.get("alertas")),
         "tem_previsao": False,
     }
 
