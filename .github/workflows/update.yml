@@ -34,15 +34,22 @@ jobs:
         env:
           PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
         run: |
-          mkdir -p public
-          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/data.json" -o public/data.json || rm -f public/data.json
-          curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/historico_diario.csv" -o public/historico_diario.csv || rm -f public/historico_diario.csv
+          mkdir -p public/cidades
+          for ARQ in data.json historico_diario.csv cidades.json cidades/porto-vitoria.json cidades/sao-mateus-do-sul.json cidades/fluviopolis.json; do
+            curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/${ARQ}" -o "public/${ARQ}" || rm -f "public/${ARQ}"
+          done
 
       - name: Rodar coleta
         env:
           ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
           ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
         run: python scrape.py
+
+      - name: Rodar coleta das outras cidades
+        env:
+          ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
+          ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
+        run: python cidades.py
 
       - name: Publicar no repositório privado
         env:
@@ -53,15 +60,20 @@ jobs:
           cd /tmp/rioiguacu-privado
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p public/cidades
           cp "$SRC/data.json" public/data.json
           cp "$SRC/historico_diario.csv" public/historico_diario.csv
-          git add public/data.json public/historico_diario.csv
+          cp "$SRC/cidades.json" public/cidades.json 2>/dev/null || true
+          cp "$SRC"/cidades/*.json public/cidades/ 2>/dev/null || true
+          git add public/data.json public/historico_diario.csv public/cidades.json public/cidades
           if git diff --staged --quiet; then
             exit 0
           fi
-          mkdir -p /tmp/coleta_atual
+          mkdir -p /tmp/coleta_atual/cidades
           cp public/data.json /tmp/coleta_atual/
           cp public/historico_diario.csv /tmp/coleta_atual/
+          cp public/cidades.json /tmp/coleta_atual/ 2>/dev/null || true
+          cp public/cidades/*.json /tmp/coleta_atual/cidades/ 2>/dev/null || true
           for i in $(seq 1 12); do
             git commit -m "Atualiza dados do Rio Iguaçu" -q || true
             if git push; then
@@ -69,9 +81,12 @@ jobs:
             fi
             git fetch origin main
             git reset --hard origin/main
+            mkdir -p public/cidades
             cp /tmp/coleta_atual/data.json public/
             cp /tmp/coleta_atual/historico_diario.csv public/
-            git add public/data.json public/historico_diario.csv
+            cp /tmp/coleta_atual/cidades.json public/ 2>/dev/null || true
+            cp /tmp/coleta_atual/cidades/*.json public/cidades/ 2>/dev/null || true
+            git add public/data.json public/historico_diario.csv public/cidades.json public/cidades
             sleep $((RANDOM % 10 + 3))
           done
           exit 1
