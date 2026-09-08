@@ -215,34 +215,44 @@ def montar_historico(cidade, itens):
     return historico or None
 
 
-def buscar_chuva_7dias(cidade):
-    try:
-        resp = requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={
-                "latitude": cidade["lat"],
-                "longitude": cidade["lon"],
-                "daily": "precipitation_sum,precipitation_probability_max,weather_code",
-                "timezone": "America/Sao_Paulo",
-                "forecast_days": 7,
-            },
-            timeout=TIMEOUT_SEGUNDOS,
-        )
-        resp.raise_for_status()
-        d = resp.json().get("daily") or {}
-        datas = d.get("time") or []
-        semana = []
-        for i, dia in enumerate(datas[:7]):
-            semana.append({
-                "data": dia,
-                "chuva_mm": round(float((d.get("precipitation_sum") or [0])[i] or 0), 1),
-                "probabilidade_pct": int((d.get("precipitation_probability_max") or [0])[i] or 0),
-                "codigo_tempo": int((d.get("weather_code") or [0])[i] or 0),
-            })
-        return semana
-    except Exception as exc:
-        log(f"{cidade['slug']}: chuva 7 dias indisponivel ({type(exc).__name__})")
-        return []
+def buscar_chuva_7dias(cidade, tentativas=3):
+    motivo = None
+    for n in range(tentativas):
+        if n:
+            time.sleep(3 * n)
+        try:
+            resp = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": cidade["lat"],
+                    "longitude": cidade["lon"],
+                    "daily": "precipitation_sum,precipitation_probability_max,weather_code",
+                    "timezone": "America/Sao_Paulo",
+                    "forecast_days": 7,
+                },
+                timeout=TIMEOUT_SEGUNDOS,
+            )
+            resp.raise_for_status()
+            d = resp.json().get("daily") or {}
+            datas = d.get("time") or []
+            semana = []
+            for i, dia in enumerate(datas[:7]):
+                semana.append({
+                    "data": dia,
+                    "chuva_mm": round(float((d.get("precipitation_sum") or [0])[i] or 0), 1),
+                    "probabilidade_pct": int((d.get("precipitation_probability_max") or [0])[i] or 0),
+                    "codigo_tempo": int((d.get("weather_code") or [0])[i] or 0),
+                })
+            if semana:
+                return semana, None
+            motivo = "resposta sem dias"
+        except Exception as exc:
+            motivo = type(exc).__name__
+            codigo = getattr(getattr(exc, "response", None), "status_code", None)
+            if codigo:
+                motivo = f"{motivo} {codigo}"
+        log(f"{cidade['slug']}: chuva 7 dias falhou na tentativa {n + 1} ({motivo})")
+    return [], motivo
 
 
 def calcular_tendencia(historico):
@@ -259,7 +269,7 @@ def calcular_tendencia(historico):
             "delta": delta, "direcao": direcao}
 
 
-def montar_payload(cidade, historico, semana):
+def montar_payload(cidade, historico, semana, motivo_chuva=None):
     ultima = historico[-1] if historico else None
     return {
         "slug": cidade["slug"],
@@ -275,6 +285,7 @@ def montar_payload(cidade, historico, semana):
         "ultima": ultima,
         "tendencia": calcular_tendencia(historico),
         "chuva_7dias": semana,
+        "chuva_7dias_diagnostico": motivo_chuva,
         "cotas_bairros": cidade.get("enchentes") or [],
         "cotas_alerta": cidade.get("alertas") or [],
         "previsao": [],
@@ -364,8 +375,9 @@ def main():
 
         anterior_hist = ((anterior or {}).get("dados") or {}).get("historico") or []
         historico = mesclar_historico(historico, anterior_hist)
-        semana = buscar_chuva_7dias(cidade)
-        payload = {"ok": True, "erro": None, "dados": montar_payload(cidade, historico, semana)}
+        semana, motivo_chuva = buscar_chuva_7dias(cidade)
+        payload = {"ok": True, "erro": None,
+                   "dados": montar_payload(cidade, historico, semana, motivo_chuva)}
         caminho.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         log(f"{cidade['slug']}: gravado ({payload['dados']['ultima']['data_hora']})")
 
