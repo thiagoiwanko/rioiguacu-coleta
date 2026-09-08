@@ -215,11 +215,19 @@ def montar_historico(cidade, itens):
     return historico or None
 
 
+CHUVA_7D_CABECALHOS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                  " (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "pt-BR,pt;q=0.9",
+}
+
+
 def buscar_chuva_7dias(cidade, tentativas=3):
     motivo = None
     for n in range(tentativas):
         if n:
-            time.sleep(3 * n)
+            time.sleep(5 + (n - 1) * 10)
         try:
             resp = requests.get(
                 "https://api.open-meteo.com/v1/forecast",
@@ -230,7 +238,8 @@ def buscar_chuva_7dias(cidade, tentativas=3):
                     "timezone": "America/Sao_Paulo",
                     "forecast_days": 7,
                 },
-                timeout=TIMEOUT_SEGUNDOS,
+                headers=CHUVA_7D_CABECALHOS,
+                timeout=max(TIMEOUT_SEGUNDOS, 30),
             )
             resp.raise_for_status()
             d = resp.json().get("daily") or {}
