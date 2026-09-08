@@ -264,6 +264,13 @@ def buscar_chuva_7dias(cidade, tentativas=3):
     return [], motivo
 
 
+def aproveitar_chuva_anterior(anterior):
+    semana = ((anterior or {}).get("dados") or {}).get("chuva_7dias") or []
+    hoje = agora_br().date().isoformat()
+    restante = [d for d in semana if str(d.get("data") or "") >= hoje]
+    return restante if len(restante) >= 3 else []
+
+
 def calcular_tendencia(historico):
     if len(historico) < 4:
         return {"texto": "Sem dados suficientes", "delta": 0.0, "direcao": "estavel"}
@@ -385,6 +392,10 @@ def main():
         anterior_hist = ((anterior or {}).get("dados") or {}).get("historico") or []
         historico = mesclar_historico(historico, anterior_hist)
         semana, motivo_chuva = buscar_chuva_7dias(cidade)
+        if not semana:
+            semana = aproveitar_chuva_anterior(anterior)
+            if semana:
+                motivo_chuva = f"{motivo_chuva or 'sem resposta'}; mantida a ultima previsao valida"
         payload = {"ok": True, "erro": None,
                    "dados": montar_payload(cidade, historico, semana, motivo_chuva)}
         caminho.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
