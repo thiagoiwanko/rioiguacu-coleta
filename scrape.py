@@ -454,6 +454,9 @@ def verificar_alerta_previsao(historico, previsao):
 
 
 
+MODELO_CHUVA = "Open-Meteo · ECMWF IFS HRES 9 km"
+
+
 URL_CHUVA_7D = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude=-26.2281&longitude=-51.0803"
@@ -540,6 +543,7 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
         "janela_historico_horas": JANELA_HISTORICO_HORAS,
         "janela_previsao_horas": JANELA_PREVISAO_HORAS,
         "chuva_7dias": semana_chuva,
+        "chuva_7dias_modelo": MODELO_CHUVA,
         "chuva_7dias_diagnostico": CHUVA_7D_DIAGNOSTICO,
     }
 

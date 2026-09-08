@@ -215,6 +215,8 @@ def montar_historico(cidade, itens):
     return historico or None
 
 
+MODELO_CHUVA = "Open-Meteo · ECMWF IFS HRES 9 km"
+
 CHUVA_7D_CABECALHOS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                   " (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -302,6 +304,7 @@ def montar_payload(cidade, historico, semana, motivo_chuva=None):
         "ultima": ultima,
         "tendencia": calcular_tendencia(historico),
         "chuva_7dias": semana,
+        "chuva_7dias_modelo": MODELO_CHUVA,
         "chuva_7dias_diagnostico": motivo_chuva,
         "cotas_bairros": cidade.get("enchentes") or [],
         "cotas_alerta": cidade.get("alertas") or [],
