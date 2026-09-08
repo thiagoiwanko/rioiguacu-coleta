@@ -454,7 +454,11 @@ def verificar_alerta_previsao(historico, previsao):
 
 
 
-MODELO_CHUVA = "Open-Meteo · ECMWF IFS HRES 9 km"
+MODELO_CHUVA = "Open-Meteo"
+MODELOS_CHUVA = ("ecmwf_ifs", "ecmwf_aifs025_single", "icon_seamless",
+                 "gfs_seamless", "gem_seamless", "jma_seamless",
+                 "meteofrance_seamless", "ukmo_seamless")
+MODELO_CODIGO_TEMPO = "ecmwf_ifs"
 
 
 URL_CHUVA_7D = (
@@ -462,7 +466,7 @@ URL_CHUVA_7D = (
     "?latitude=-26.2281&longitude=-51.0803"
     "&daily=weather_code,precipitation_sum,precipitation_probability_max"
     "&timezone=America%2FSao_Paulo&forecast_days=7"
-    "&models=ecmwf_ifs"
+    "&models=" + ",".join(MODELOS_CHUVA)
 )
 
 
@@ -477,23 +481,57 @@ CHUVA_7D_CABECALHOS = {
 }
 
 
+def mediana(valores):
+    ordenados = sorted(valores)
+    n = len(ordenados)
+    meio = n // 2
+    if n % 2:
+        return float(ordenados[meio])
+    return (float(ordenados[meio - 1]) + float(ordenados[meio])) / 2.0
+
+
+def valores_dos_modelos(diario, campo, i):
+    achados = []
+    for modelo in MODELOS_CHUVA:
+        serie = diario.get(campo + "_" + modelo)
+        if not serie or i >= len(serie) or serie[i] is None:
+            continue
+        achados.append(float(serie[i]))
+    if not achados:
+        serie = diario.get(campo)
+        if serie and i < len(serie) and serie[i] is not None:
+            achados.append(float(serie[i]))
+    return achados
+
+
+def codigo_do_tempo(diario, i):
+    for modelo in (MODELO_CODIGO_TEMPO,) + MODELOS_CHUVA:
+        serie = diario.get("weather_code_" + modelo)
+        if serie and i < len(serie) and serie[i] is not None:
+            return int(serie[i])
+    serie = diario.get("weather_code") or []
+    return int(serie[i]) if i < len(serie) and serie[i] is not None else 0
+
+
 def _chuva_7dias_uma_vez():
     resp = requests.get(URL_CHUVA_7D, headers=CHUVA_7D_CABECALHOS, timeout=45)
     resp.raise_for_status()
     diario = resp.json().get("daily") or {}
     datas = diario.get("time") or []
-    chuva = diario.get("precipitation_sum") or []
-    prob = diario.get("precipitation_probability_max") or []
-    codigo = diario.get("weather_code") or []
     saida = []
     for i, data in enumerate(datas):
-        if i >= len(chuva):
+        chuvas = valores_dos_modelos(diario, "precipitation_sum", i)
+        if not chuvas:
             break
+        probs = valores_dos_modelos(diario, "precipitation_probability_max", i)
         saida.append({
             "data": data,
-            "chuva_mm": round(float(chuva[i] or 0), 1),
-            "probabilidade_pct": int(prob[i] or 0) if i < len(prob) else 0,
-            "codigo_tempo": int(codigo[i] or 0) if i < len(codigo) else 0,
+            "chuva_mm": round(mediana(chuvas), 1),
+            "probabilidade_pct": int(round(mediana(probs))) if probs else 0,
+            "codigo_tempo": codigo_do_tempo(diario, i),
+            "modelos": len(chuvas),
+            "chuva_min_mm": round(min(chuvas), 1),
+            "chuva_max_mm": round(max(chuvas), 1),
         })
     return saida
 
