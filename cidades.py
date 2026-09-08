@@ -237,6 +237,7 @@ def buscar_chuva_7dias(cidade, tentativas=3):
                     "daily": "precipitation_sum,precipitation_probability_max,weather_code",
                     "timezone": "America/Sao_Paulo",
                     "forecast_days": 7,
+                    "models": "ecmwf_ifs025",
                 },
                 headers=CHUVA_7D_CABECALHOS,
                 timeout=max(TIMEOUT_SEGUNDOS, 30),

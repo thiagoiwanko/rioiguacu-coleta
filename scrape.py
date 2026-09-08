@@ -459,6 +459,7 @@ URL_CHUVA_7D = (
     "?latitude=-26.2281&longitude=-51.0803"
     "&daily=weather_code,precipitation_sum,precipitation_probability_max"
     "&timezone=America%2FSao_Paulo&forecast_days=7"
+    "&models=ecmwf_ifs025"
 )
 
 
