@@ -28,7 +28,7 @@ HISTORICO_DIARIO_CABECALHO = "Data;NivelMaximo_m;NivelMinimo_m;NivelUltimo_m;Vaz
 URL_HISTORICO_COPEL = "https://www.copel.com/mhbweb/paginas/bacia-iguacu.jsf"
 URL_HISTORICO_ANA = "https://www.snirh.gov.br/hidrotelemetria/"
 URL_PREVISAO = "https://www.copel.com/mhbweb/paginas/previsao.jsf"
-PUBLICAR_PREVISAO = os.environ.get("PUBLICAR_PREVISAO", "0") == "1"
+PUBLICAR_PREVISAO = os.environ.get("PUBLICAR_PREVISAO", "1") == "1"
 
 ANA_BASE = "https://www.ana.gov.br/hidrowebservice"
 ANA_CODIGO_ESTACAO = 65310001
