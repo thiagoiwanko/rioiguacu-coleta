@@ -62,7 +62,6 @@ CIDADES = [
         "zero_regua_m": None,
         "enchentes": [
             {"nivel": 7.19, "descricao": "Enchente de 1992"},
-            {"nivel": 6.72, "descricao": "Enchente de 1983"},
             {"nivel": 6.16, "descricao": "Enchente de 2014"},
             {"nivel": 6.07, "descricao": "Enchente de 1995"},
             {"nivel": 6.02, "descricao": "Enchente de 2010"},
