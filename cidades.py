@@ -25,6 +25,17 @@ FONTE_ALERTAS = ("Hidroinfo / Instituto Água e Terra (IAT) - Governo do Paraná
 
 ATRASO_AVISO_MIN = int(os.environ.get("CIDADES_ATRASO_AVISO_MIN", "150"))
 
+CHUVA_MONTANTE_PATH = PUBLIC_DIR / "chuva-montante.json"
+
+ESTACOES_CHUVA_MONTANTE = [
+    {"codigo": 65299001, "nome": "Foz do Timbó", "uf": "SC",
+     "rio": "Timbó", "local": "Irineópolis", "ordem": 1},
+    {"codigo": 65100001, "nome": "Rio Negro", "uf": "PR",
+     "rio": "Negro", "local": "Rio Negro", "ordem": 4},
+    {"codigo": 65035001, "nome": "Porto Amazonas", "uf": "PR",
+     "rio": "Iguaçu", "local": "Porto Amazonas", "ordem": 5},
+]
+
 CIDADES = [
     {
         "slug": "porto-vitoria",
@@ -182,6 +193,85 @@ def coletar_todas_via_ana(token):
             por_codigo.setdefault(codigo, []).append(item)
     log(f"ANA v2: {len(itens)} registros em 1 chamada, {len(por_codigo)} estacoes")
     return por_codigo
+
+
+def coletar_chuva_montante(token):
+    codigos = ",".join(str(e["codigo"]) for e in ESTACOES_CHUVA_MONTANTE)
+    query = _ana_query_string({
+        "Codigos_Estacoes": codigos,
+        "Tipo Filtro Data": "DATA_LEITURA",
+        "Data de Busca (yyyy-MM-dd)": agora_br().strftime("%Y-%m-%d"),
+        "Range Intervalo de busca": "DIAS_2",
+    })
+    resp = requests.get(
+        f"{ANA_BASE}/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2?{query}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=TIMEOUT_SEGUNDOS,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    itens = payload.get("items") or []
+    if payload.get("code") != 200 or not itens:
+        log(f"chuva montante: sem itens ({payload.get('message')})")
+        return None
+
+    por_codigo = {}
+    for item in itens:
+        codigo = str(item.get("codigoestacao") or "")
+        if codigo:
+            por_codigo.setdefault(codigo, []).append(item)
+
+    limite = agora_br() - timedelta(hours=JANELA_HISTORICO_HORAS)
+    estacoes = []
+    for estacao in ESTACOES_CHUVA_MONTANTE:
+        brutos = por_codigo.get(str(estacao["codigo"])) or []
+        horas = []
+        for item in sorted(brutos, key=lambda x: x["Data_Hora_Medicao"]):
+            quando = _parse_data_hora_ana(item["Data_Hora_Medicao"])
+            if quando < limite:
+                continue
+            horas.append({
+                "data_hora": iso(quando),
+                "chuva_mm": round(float(item.get("Chuva_Adotada", 0) or 0), 1),
+            })
+        if not horas:
+            log(f"chuva montante: {estacao['nome']} sem leitura")
+            continue
+        estacoes.append({
+            "codigo": estacao["codigo"],
+            "nome": estacao["nome"],
+            "uf": estacao["uf"],
+            "rio": estacao["rio"],
+            "local": estacao["local"],
+            "ordem": estacao["ordem"],
+            "horas": horas,
+        })
+    if not estacoes:
+        return None
+    log(f"chuva montante: {len(estacoes)} estacoes")
+    return {
+        "atualizado_em": iso(agora_br()),
+        "fonte": FONTE_ANA,
+        "janela_horas": JANELA_HISTORICO_HORAS,
+        "estacoes": estacoes,
+    }
+
+
+def gravar_chuva_montante(token):
+    if not token:
+        return
+    try:
+        dados = coletar_chuva_montante(token)
+    except Exception as exc:
+        log(f"chuva montante falhou ({type(exc).__name__})")
+        return
+    if not dados:
+        return
+    try:
+        CHUVA_MONTANTE_PATH.write_text(
+            json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:
+        log(f"chuva montante nao gravada ({type(exc).__name__})")
 
 
 def montar_historico(cidade, itens):
@@ -400,6 +490,7 @@ def main():
     algum_pendente = any(
         precisa_atualizar(ler_anterior(CIDADES_DIR / f"{c['slug']}.json")) for c in CIDADES)
     por_codigo = {}
+    token = None
     if algum_pendente:
         try:
             token = _ana_autenticar()
@@ -452,6 +543,11 @@ def main():
                    ensure_ascii=False, indent=2),
         encoding="utf-8")
     log(f"indice com {len(indice)} cidades")
+
+    try:
+        gravar_chuva_montante(token)
+    except Exception as exc:
+        log(f"chuva montante ignorada ({type(exc).__name__})")
     return 0
 
 
