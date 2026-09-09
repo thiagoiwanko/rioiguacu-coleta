@@ -28,7 +28,7 @@ ATRASO_AVISO_MIN = int(os.environ.get("CIDADES_ATRASO_AVISO_MIN", "150"))
 CHUVA_MONTANTE_PATH = PUBLIC_DIR / "chuva-montante.json"
 
 ESTACOES_CHUVA_MONTANTE = [
-    {"codigo": 65299001, "nome": "Foz do Timbó", "uf": "SC",
+    {"codigo": 65271000, "nome": "Rio Timbó", "uf": "SC",
      "rio": "Timbó", "local": "Irineópolis", "ordem": 1},
     {"codigo": 65100001, "nome": "Rio Negro", "uf": "PR",
      "rio": "Negro", "local": "Rio Negro", "ordem": 4},
