@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import random
 import re
 import time
 from datetime import datetime, timedelta
@@ -39,7 +38,6 @@ JANELA_PREVISAO_HORAS = 48
 TIMEOUT_COLETA_SEGUNDOS = 90
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
-JITTER_PREVISAO_MAX_FRACAO = 0.01
 
 LIMIAR_PREVISAO_DESATUALIZADA_HORAS = 3
 
@@ -326,27 +324,6 @@ def extrair_ultimo_valor_considerado(texto):
         return datetime.strptime(f"{m.group(1)} {m.group(2)}", "%d/%m/%Y %H:%M")
     except Exception:
         return None
-
-
-def _jitter(valor):
-    if valor is None:
-        return None
-    fator = 1 + random.uniform(-JITTER_PREVISAO_MAX_FRACAO, JITTER_PREVISAO_MAX_FRACAO)
-    return round(valor * fator, 2)
-
-
-def aplicar_jitter_previsao(previsao):
-    resultado = []
-    for item in previsao:
-        novo = dict(item)
-        sem_chuva = _jitter(item.get("regua_sem_chuva_m"))
-        com_chuva = _jitter(item.get("regua_com_chuva_m"))
-        if sem_chuva is not None and com_chuva is not None and sem_chuva >= com_chuva:
-            sem_chuva = round(com_chuva - 0.01, 2)
-        novo["regua_sem_chuva_m"] = sem_chuva
-        novo["regua_com_chuva_m"] = com_chuva
-        resultado.append(novo)
-    return resultado
 
 
 def _fingerprint_previsao(previsao_bruta):
@@ -663,7 +640,7 @@ def coletar_uma_vez(
         )
         previsao_publicada = []
     else:
-        previsao_publicada = aplicar_jitter_previsao(previsao_bruta)
+        previsao_publicada = previsao_bruta
 
     payload = montar_payload(historico, previsao_publicada, FONTE_ANA, url_historico)
     payload["previsao_fingerprint"] = previsao_fingerprint
