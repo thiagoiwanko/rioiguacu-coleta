@@ -570,7 +570,16 @@ def mesclar_historico(historico_novo, historico_anterior):
     por_hora.update({item["data_hora"]: item for item in historico_novo})
     limite = agora_br() - timedelta(hours=JANELA_HISTORICO_HORAS)
     itens = [item for item in por_hora.values() if datetime.fromisoformat(item["data_hora"]) >= limite]
-    return sorted(itens, key=lambda item: item["data_hora"])
+    itens.sort(key=lambda item: item["data_hora"])
+    acumulada = 0.0
+    dia = None
+    for item in itens:
+        if item["data_hora"][:10] != dia:
+            dia = item["data_hora"][:10]
+            acumulada = 0.0
+        acumulada = round(acumulada + (item.get("chuva_mm") or 0.0), 1)
+        item["chuva_acumulada_mm"] = acumulada
+    return itens
 
 
 def coletar_uma_vez(

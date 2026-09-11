@@ -466,7 +466,11 @@ def mesclar_historico(novo, anterior):
              if datetime.fromisoformat(x["data_hora"]) >= limite]
     itens.sort(key=lambda x: x["data_hora"])
     acumulada = 0.0
+    dia = None
     for x in itens:
+        if x["data_hora"][:10] != dia:
+            dia = x["data_hora"][:10]
+            acumulada = 0.0
         acumulada = round(acumulada + (x.get("chuva_mm") or 0.0), 1)
         x["chuva_acumulada_mm"] = acumulada
     return itens
