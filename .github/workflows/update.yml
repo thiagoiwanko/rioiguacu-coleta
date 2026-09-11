@@ -3,7 +3,12 @@ name: Atualizar dados do Rio Iguaçu
 on:
   schedule:
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      forcar_cidades:
+        description: "Recoletar as cidades agora, ignorando a trava de 55 min"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -49,6 +54,7 @@ jobs:
         env:
           ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
           ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
+          CIDADES_INTERVALO_MIN: ${{ inputs.forcar_cidades == true && '0' || '55' }}
         run: python cidades.py
 
       - name: Publicar no repositório privado
