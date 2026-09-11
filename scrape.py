@@ -40,6 +40,7 @@ FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 
 LIMIAR_PREVISAO_DESATUALIZADA_HORAS = 3
+TOLERANCIA_RELOGIO_MINUTOS = 15
 
 
 def agora_br():
@@ -635,23 +636,38 @@ def coletar_uma_vez(
         previsao_fingerprint = previsao_fingerprint_anterior
         previsao_atualizada_em = previsao_atualizada_em_anterior
 
+    agora = agora_br()
     previsao_desatualizada = bool(
         previsao_atualizada_em
-        and (agora_br() - previsao_atualizada_em) > timedelta(hours=LIMIAR_PREVISAO_DESATUALIZADA_HORAS)
+        and (agora - previsao_atualizada_em) > timedelta(hours=LIMIAR_PREVISAO_DESATUALIZADA_HORAS)
     )
-    if previsao_desatualizada:
+    previsao_no_futuro = bool(
+        previsao_atualizada_em
+        and (previsao_atualizada_em - agora) > timedelta(minutes=TOLERANCIA_RELOGIO_MINUTOS)
+    )
+    previsao_motivo_suprimida = None
+    if previsao_no_futuro:
+        log(
+            f"Último valor considerado da Copel no futuro ({iso(previsao_atualizada_em)}, "
+            f"agora é {iso(agora)}) -- suspeito, não será publicada nesta rodada."
+        )
+        previsao_publicada = []
+        previsao_motivo_suprimida = "inconsistente"
+    elif previsao_desatualizada:
         log(
             f"Previsão sem mudança real desde {iso(previsao_atualizada_em)} "
             f"(> {LIMIAR_PREVISAO_DESATUALIZADA_HORAS}h) -- não será publicada "
             "nesta rodada, pra não desenhar o 'dente' no gráfico."
         )
         previsao_publicada = []
+        previsao_motivo_suprimida = "desatualizada"
     else:
         previsao_publicada = previsao_bruta
 
     payload = montar_payload(historico, previsao_publicada, FONTE_ANA, url_historico)
     payload["previsao_fingerprint"] = previsao_fingerprint
     payload["previsao_atualizada_em"] = iso(previsao_atualizada_em) if previsao_atualizada_em else None
+    payload["previsao_motivo_suprimida"] = previsao_motivo_suprimida
     return payload
 
 
