@@ -796,6 +796,11 @@ def main():
             erro = str(exc)
             log(f"Erro na coleta (tentativa {tentativa}): {exc}")
             payload = None
+            # Erro de rede/navegador tambem merece nova tentativa, nao so
+            # dado sem novidade.
+            if tentativa < tentativas:
+                time.sleep(ESPERA_NOVA_TENTATIVA_SEGUNDOS)
+                continue
             break
 
         nova_ultima = payload["ultima"]["data_hora"]
@@ -820,8 +825,12 @@ def main():
         atualizar_historico_diario(payload)
     else:
         dados_cache = anterior["dados"] if anterior else None
-        resultado = {"ok": False, "erro": erro or "falha desconhecida na coleta", "dados": dados_cache}
-        log(f"Falha na coleta, mantendo dado anterior em cache. Erro: {erro}")
+        # So a primeira linha vai para o data.json publico; o log guarda o
+        # texto inteiro, stacktrace do WebDriver incluso.
+        erro_completo = erro or "falha desconhecida na coleta"
+        erro_publico = erro_completo.splitlines()[0].strip()[:200]
+        resultado = {"ok": False, "erro": erro_publico, "dados": dados_cache}
+        log(f"Falha na coleta, mantendo dado anterior em cache. Erro: {erro_completo}")
 
     DATA_PATH.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
     log(f"data.json gravado ({DATA_PATH.stat().st_size} bytes).")
