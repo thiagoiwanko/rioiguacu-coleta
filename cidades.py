@@ -305,10 +305,8 @@ def montar_historico(cidade, itens):
 
 
 MODELO_CHUVA = "Open-Meteo"
-MODELOS_CHUVA = ("ecmwf_ifs", "ecmwf_aifs025_single", "icon_seamless",
-                 "gfs_seamless", "gem_seamless", "jma_seamless",
-                 "meteofrance_seamless", "ukmo_seamless")
-MODELO_CODIGO_TEMPO = "ecmwf_ifs"
+MODELOS_CHUVA = ("best_match",)
+MODELO_CODIGO_TEMPO = "best_match"
 
 
 def mediana(valores):
