@@ -66,7 +66,6 @@ COTAS_BAIRROS = [
     (6.39, "Bom Jesus"),
     (6.42, "Cristo Rei"),
     (7.39, "Centro - União da Vitória"),
-    (7.82, "Enchente de 2019"),
     (8.12, "Enchente de 2014"),
     (8.16, "Enchente de 1935"),
     (8.37, "Enchente de 2023"),
