@@ -623,6 +623,13 @@ def coletar_uma_vez(
     except Exception as exc:
         log(f"Previsão indisponível: {exc}")
 
+    if ultimo_valor_considerado is not None and (ultimo_valor_considerado - agora_br()) > timedelta(minutes=TOLERANCIA_RELOGIO_MINUTOS):
+        log(
+            f"Último valor considerado da Copel no futuro ({iso(ultimo_valor_considerado)}, "
+            f"agora é {iso(agora_br())}) -- ignorado como carimbo; atualização passa a ser detectada pelo conteúdo."
+        )
+        ultimo_valor_considerado = None
+
     if ultimo_valor_considerado is not None:
         previsao_atualizada_em = ultimo_valor_considerado
         previsao_fingerprint = _fingerprint_previsao(previsao_bruta) if previsao_bruta else previsao_fingerprint_anterior
@@ -641,19 +648,8 @@ def coletar_uma_vez(
         previsao_atualizada_em
         and (agora - previsao_atualizada_em) > timedelta(hours=LIMIAR_PREVISAO_DESATUALIZADA_HORAS)
     )
-    previsao_no_futuro = bool(
-        previsao_atualizada_em
-        and (previsao_atualizada_em - agora) > timedelta(minutes=TOLERANCIA_RELOGIO_MINUTOS)
-    )
     previsao_motivo_suprimida = None
-    if previsao_no_futuro:
-        log(
-            f"Último valor considerado da Copel no futuro ({iso(previsao_atualizada_em)}, "
-            f"agora é {iso(agora)}) -- suspeito, não será publicada nesta rodada."
-        )
-        previsao_publicada = []
-        previsao_motivo_suprimida = "inconsistente"
-    elif previsao_desatualizada:
+    if previsao_desatualizada:
         log(
             f"Previsão sem mudança real desde {iso(previsao_atualizada_em)} "
             f"(> {LIMIAR_PREVISAO_DESATUALIZADA_HORAS}h) -- não será publicada "
@@ -662,7 +658,16 @@ def coletar_uma_vez(
         previsao_publicada = []
         previsao_motivo_suprimida = "desatualizada"
     else:
-        previsao_publicada = previsao_bruta
+        ultima_medicao = historico[-1]["data_hora"] if historico else None
+        previsao_publicada = [
+            item for item in previsao_bruta
+            if not ultima_medicao or item["data_hora"] > ultima_medicao
+        ]
+        if len(previsao_publicada) != len(previsao_bruta):
+            log(
+                f"Previsão: {len(previsao_bruta) - len(previsao_publicada)} ponto(s) anteriores à última medição "
+                f"({ultima_medicao}) descartados."
+            )
 
     payload = montar_payload(historico, previsao_publicada, FONTE_ANA, url_historico)
     payload["previsao_fingerprint"] = previsao_fingerprint
