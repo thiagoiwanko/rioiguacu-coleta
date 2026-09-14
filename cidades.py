@@ -48,7 +48,6 @@ CIDADES = [
         "enchentes": [
             {"nivel": 4.14, "descricao": "Enchente de 2023"},
             {"nivel": 3.76, "descricao": "Enchente de 2000"},
-            {"nivel": 3.19, "descricao": "Enchente de 2019"},
             {"nivel": 3.13, "descricao": "Enchente de 1999"},
             {"nivel": 3.07, "descricao": "Enchente de 2001"},
             {"nivel": 3.00, "descricao": "Enchente de 2007"},
