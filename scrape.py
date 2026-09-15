@@ -39,7 +39,7 @@ TIMEOUT_COLETA_SEGUNDOS = 90
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 
-LIMIAR_PREVISAO_DESATUALIZADA_HORAS = 3
+LIMIAR_PREVISAO_DESATUALIZADA_HORAS = 13
 TOLERANCIA_RELOGIO_MINUTOS = 15
 
 
@@ -658,14 +658,12 @@ def coletar_uma_vez(
         previsao_motivo_suprimida = "desatualizada"
     else:
         ultima_medicao = historico[-1]["data_hora"] if historico else None
-        previsao_publicada = [
-            item for item in previsao_bruta
-            if not ultima_medicao or item["data_hora"] > ultima_medicao
-        ]
+        corte = max(filter(None, (ultima_medicao, iso(agora))))
+        previsao_publicada = [item for item in previsao_bruta if item["data_hora"] > corte]
         if len(previsao_publicada) != len(previsao_bruta):
             log(
-                f"Previsão: {len(previsao_bruta) - len(previsao_publicada)} ponto(s) anteriores à última medição "
-                f"({ultima_medicao}) descartados."
+                f"Previsão: {len(previsao_bruta) - len(previsao_publicada)} ponto(s) até {corte} "
+                "(última medição ou hora atual, o que for mais tarde) descartados."
             )
 
     payload = montar_payload(historico, previsao_publicada, FONTE_ANA, url_historico)
