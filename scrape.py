@@ -432,8 +432,10 @@ def verificar_alerta_previsao(historico, previsao):
 
 
 MODELO_CHUVA = "Open-Meteo"
-MODELOS_CHUVA = ("best_match",)
-MODELO_CODIGO_TEMPO = "best_match"
+MODELOS_CHUVA = ("ecmwf_ifs025", "gfs_seamless", "icon_seamless",
+                 "gem_seamless", "jma_seamless", "meteofrance_seamless",
+                 "ukmo_seamless", "cma_grapes_global")
+MODELO_CODIGO_TEMPO = "ecmwf_ifs025"
 
 
 URL_CHUVA_7D = (
