@@ -70,15 +70,16 @@ def buscar_avisos_ativos():
 
 
 def bloco_para(codigos_ibge, anterior=None):
-    """Bloco `avisos_inmet` de uma cidade. `anterior` e o bloco gravado na rodada
-    passada, devolvido intacto (com `erro`) se a API falhar agora."""
+    """Bloco `avisos_inmet` de uma cidade, ou None se a API do INMET falhar
+    (`anterior` e ignorado: sem INMET, sem aviso)."""
     alvo = {str(c) for c in codigos_ibge}
     try:
         brutos = buscar_avisos_ativos()
     except Exception as exc:
-        base = dict(anterior or {"ativos": [], "consultado_em": None})
-        base.update({"fonte": FONTE, "url": URL_PUBLICA, "erro": f"consulta falhou: {type(exc).__name__}"})
-        return base
+        # Decisao do dono (21/09/2026): sem INMET, sem aviso. O bloco some do JSON e o site
+        # nao mostra nada - nem aviso antigo, nem mensagem de erro. Fica so no log da rodada.
+        print(f"[inmet] consulta falhou ({type(exc).__name__}); bloco de avisos omitido nesta rodada", flush=True)
+        return None
     ativos = [_normalizar(a) for a in brutos if _codigos(a) & alvo and not a.get("encerrado")]
     ordem = {"vermelho": 3, "laranja": 2, "amarelo": 1}
     ativos.sort(key=lambda a: (-ordem.get(a["nivel"], 0), a["fim"] or ""))
