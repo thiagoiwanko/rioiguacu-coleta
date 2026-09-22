@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+import inmet
+
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 SAIDA = PUBLIC_DIR / "foz-do-iguacu.json"
@@ -194,6 +196,7 @@ def main():
         "historico_serie": {"estacao": "65993000 Salto Cataratas", "periodo": "1942–2020 (nível), 1982–2019 (vazão)",
                             "dias_acima_8500": 187, "dias_total": 13540, "fonte": "ANA/HidroWeb, séries históricas"},
         "janela_historico_horas": JANELA_H,
+        "avisos_inmet": inmet.bloco_para(("4108304",), dados_ant.get("avisos_inmet")),
     }}
     SAIDA.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     log("gravado")

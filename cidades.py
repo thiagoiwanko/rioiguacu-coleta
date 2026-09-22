@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+import inmet
+
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 CIDADES_DIR = PUBLIC_DIR / "cidades"
@@ -39,6 +41,7 @@ ESTACOES_CHUVA_MONTANTE = [
 CIDADES = [
     {
         "slug": "porto-vitoria",
+        "ibge": ("4120309",),
         "nome": "Porto Vitória",
         "uf": "PR",
         "codigo_ana": 65365801,
@@ -56,6 +59,7 @@ CIDADES = [
     },
     {
         "slug": "porto-amazonas",
+        "ibge": ("4120101",),
         "alertas": [
             {"nivel": 6.00, "descricao": "GRANDE ENCHENTE"},
             {"nivel": 5.00, "descricao": "ENCHENTE"},
@@ -144,6 +148,7 @@ CIDADES = [
     },
     {
         "slug": "sao-mateus-do-sul",
+        "ibge": ("4125605",),
         "alertas": [
             {"nivel": 4.00, "descricao": "ALARME"},
             {"nivel": 3.85, "descricao": "ALERTA"},
@@ -170,6 +175,7 @@ CIDADES = [
     },
     {
         "slug": "fluviopolis",
+        "ibge": ("4125605",),  # distrito de Sao Mateus do Sul
         "alertas": [
             {"nivel": 4.20, "descricao": "ALARME"},
             {"nivel": 4.00, "descricao": "ALERTA"},
@@ -507,7 +513,7 @@ def calcular_tendencia(historico):
             "delta": delta, "direcao": direcao}
 
 
-def montar_payload(cidade, historico, semana, motivo_chuva=None):
+def montar_payload(cidade, historico, semana, motivo_chuva=None, avisos_anterior=None):
     ultima = historico[-1] if historico else None
     return {
         "slug": cidade["slug"],
@@ -525,6 +531,7 @@ def montar_payload(cidade, historico, semana, motivo_chuva=None):
         "chuva_7dias": semana,
         "chuva_7dias_modelo": MODELO_CHUVA,
         "chuva_7dias_diagnostico": motivo_chuva,
+        "avisos_inmet": inmet.bloco_para(cidade.get("ibge") or (), avisos_anterior),
         "cotas_bairros": cidade.get("enchentes") or [],
         "cotas_alerta": cidade.get("alertas") or [],
         "niveis_fonte": cidade.get("niveis_fonte"),
@@ -627,7 +634,7 @@ def main():
             if semana:
                 motivo_chuva = f"{motivo_chuva or 'sem resposta'}; mantida a ultima previsao valida"
         payload = {"ok": True, "erro": None,
-                   "dados": montar_payload(cidade, historico, semana, motivo_chuva)}
+                   "dados": montar_payload(cidade, historico, semana, motivo_chuva, ((anterior or {}).get("dados") or {}).get("avisos_inmet"))}
         caminho.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         log(f"{cidade['slug']}: gravado ({payload['dados']['ultima']['data_hora']})")
 

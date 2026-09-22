@@ -9,6 +9,8 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import requests
+
+import inmet
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -560,8 +562,13 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
         "chuva_7dias": semana_chuva,
         "chuva_7dias_modelo": MODELO_CHUVA,
         "chuva_7dias_diagnostico": CHUVA_7D_DIAGNOSTICO,
+        "avisos_inmet": inmet.bloco_para(IBGE_PAGINA_PRINCIPAL, AVISOS_INMET_ANTERIOR),
     }
 
+
+# Codigos IBGE dos municipios cobertos pela pagina principal (avisos do INMET)
+IBGE_PAGINA_PRINCIPAL = ("4128203", "4213609")  # Uniao da Vitoria/PR, Porto Uniao/SC
+AVISOS_INMET_ANTERIOR = None
 
 FONTE_ANA = "ANA – Agência Nacional de Águas e Saneamento Básico (estação telemétrica UHE Gov. Bento Munhoz, União da Vitória)"
 FONTE_COPEL = "Copel – Monitoramento Hidrológico (fonte redundante, usada quando a ANA ainda não publicou a leitura da hora)"
@@ -802,6 +809,8 @@ def main():
         dados_anteriores = anterior["dados"]
         ultima_anterior = dados_anteriores.get("ultima", {}).get("data_hora")
         historico_anterior = dados_anteriores.get("historico", [])
+        global AVISOS_INMET_ANTERIOR
+        AVISOS_INMET_ANTERIOR = dados_anteriores.get("avisos_inmet")
         previsao_fingerprint_anterior = dados_anteriores.get("previsao_fingerprint")
         ts_previsao_anterior = dados_anteriores.get("previsao_atualizada_em")
         if ts_previsao_anterior:
