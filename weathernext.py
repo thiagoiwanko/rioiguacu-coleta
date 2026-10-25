@@ -47,6 +47,45 @@ def ler_data(texto):
     return datetime.fromisoformat(str(texto).replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+class CredencialInvalida(Exception):
+    pass
+
+
+NECESSARIOS = ("client_id", "client_secret", "refresh_token")
+
+
+def ler_credencial(bruto):
+    try:
+        dados = json.loads(bruto.strip())
+    except ValueError:
+        raise CredencialInvalida("credencial nao e JSON valido") from None
+    for _ in range(3):
+        if isinstance(dados, str):
+            try:
+                dados = json.loads(dados)
+            except ValueError:
+                raise CredencialInvalida("credencial nao e JSON valido") from None
+            continue
+        if not isinstance(dados, dict):
+            raise CredencialInvalida("credencial nao e um objeto JSON")
+        if isinstance(dados.get("fields"), list):
+            dados = {str(f.get("name") or "").strip().lower().replace(" ", "_"): f.get("value") for f in dados["fields"]}
+            continue
+        aninhado = next((dados[k] for k in ("json", "installed", "web") if k in dados and not all(dados.get(n) for n in NECESSARIOS)), None)
+        if aninhado is not None:
+            dados = aninhado
+            continue
+        break
+    if not isinstance(dados, dict):
+        raise CredencialInvalida("credencial nao e um objeto JSON")
+    faltam = [n for n in NECESSARIOS if not dados.get(n)]
+    if faltam:
+        raise CredencialInvalida(
+            "faltam campos: " + ", ".join(faltam) + "; campos presentes: " + ", ".join(sorted(str(k) for k in dados))
+        )
+    return dados
+
+
 def iniciar():
     import ee
     from google.oauth2.credentials import Credentials
@@ -55,9 +94,7 @@ def iniciar():
     bruto = os.environ.get("WEATHERNEXT_CREDENCIAL", "")
     if not bruto:
         raise RuntimeError("credencial_ausente")
-    dados = json.loads(bruto)
-    if isinstance(dados.get("fields"), list):
-        dados = {f.get("name"): f.get("value") for f in dados["fields"]}
+    dados = ler_credencial(bruto)
     for chave in ("refresh_token", "client_secret", "client_id"):
         mascarar(dados.get(chave))
     cred = Credentials.from_authorized_user_info(dados, scopes=["https://www.googleapis.com/auth/cloud-platform"])
@@ -263,7 +300,7 @@ def main():
             estado[chave] = {"inicio_utc": iso(inicio), "horas": horas, "extraido_utc": iso(agora), "pontos": extrair(ee, inicio, horas)}
             log(f"{chave}: {iso(inicio)} extraída")
     except Exception as erro:
-        log(f"falha: {type(erro).__name__}")
+        log(f"falha: {erro}" if isinstance(erro, CredencialInvalida) else f"falha: {type(erro).__name__}")
         estado["falha_utc"] = iso(agora)
     estado["extracoes"] = contagem
     estado["fonte"] = "WeatherNext 3"
