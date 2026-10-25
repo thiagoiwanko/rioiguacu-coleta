@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 import inmet
+import weathernext
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -25,6 +26,18 @@ LOG_PATH = BASE_DIR / "monitor_web.log"
 ANA_TOKEN_CACHE_PATH = BASE_DIR / ".ana_token_cache.json"
 HISTORICO_DIARIO_PATH = PUBLIC_DIR / "historico_diario.csv"
 HISTORICO_DIARIO_CABECALHO = "Data;NivelMaximo_m;NivelMinimo_m;NivelUltimo_m;VazaoUltimo_m3s;Fonte\n"
+RECORDES_CHUVA_PATH = PUBLIC_DIR / "chuva-recordes.json"
+RECORDES_CHUVA_POSICOES = 15
+RECORDES_CHUVA_BASE = {
+    "desde": 1938,
+    "dias": [
+        ["2014-06-08", 264.9], ["1991-12-10", 156.2], ["2004-10-25", 155.5],
+        ["1983-05-20", 154.6], ["1998-04-24", 145.2], ["1992-05-29", 139.8],
+        ["1946-12-11", 139.6], ["2026-08-31", 138.6], ["2010-04-23", 125.7],
+        ["1993-05-14", 123.6], ["1983-07-09", 121.4], ["2005-10-29", 120.0],
+        ["2009-09-28", 117.9], ["1972-09-27", 112.0], ["1990-08-19", 110.0],
+    ],
+}
 
 URL_HISTORICO_COPEL = "https://www.copel.com/mhbweb/paginas/bacia-iguacu.jsf"
 URL_HISTORICO_ANA = "https://www.snirh.gov.br/hidrotelemetria/"
@@ -534,6 +547,41 @@ def buscar_chuva_7dias():
     return []
 
 
+def recorde_chuva(historico):
+    try:
+        base = json.loads(RECORDES_CHUVA_PATH.read_text(encoding="utf-8"))
+        dias = {d: float(mm) for d, mm in base["dias"]}
+        desde = int(base["desde"])
+    except Exception:
+        dias = {d: mm for d, mm in RECORDES_CHUVA_BASE["dias"]}
+        desde = RECORDES_CHUVA_BASE["desde"]
+    hoje = historico[-1]["data_hora"][:10]
+    por_dia = {}
+    for item in historico:
+        por_dia.setdefault(item["data_hora"][:10], []).append(item.get("chuva_mm") or 0.0)
+    for dia, valores in por_dia.items():
+        if dia < hoje and len(valores) >= 20 and dia not in dias:
+            dias[dia] = round(sum(valores), 1)
+    lista = sorted(dias.items(), key=lambda t: -t[1])[:RECORDES_CHUVA_POSICOES]
+    RECORDES_CHUVA_PATH.write_text(
+        json.dumps({"desde": desde, "dias": [list(t) for t in lista]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    total_hoje = round(sum(por_dia.get(hoje, [])), 1)
+    if total_hoje <= 0:
+        return None
+    posicao = 1 + sum(1 for d, mm in lista if d != hoje and mm > total_hoje)
+    if posicao > RECORDES_CHUVA_POSICOES:
+        return None
+    return {
+        "data": hoje,
+        "chuva_mm": total_hoje,
+        "posicao": posicao,
+        "desde": desde,
+        "maiores": [{"data": d, "chuva_mm": mm} for d, mm in lista[:5]],
+    }
+
+
 def montar_payload(historico, previsao, fonte_historico, url_historico):
     if not PUBLICAR_PREVISAO:
         previsao = []
@@ -543,6 +591,24 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
     ultima = historico[-1]
     regua = float(ultima["regua_m"])
     semana_chuva = buscar_chuva_7dias()
+    modelo_chuva = MODELO_CHUVA
+    try:
+        semana_wn = weathernext.semana_para("uniao-da-vitoria", historico)
+    except Exception as exc:
+        semana_wn = None
+        log(f"WeatherNext 3 indisponível ({type(exc).__name__}); mantido o Open-Meteo.")
+    if semana_wn:
+        semana_chuva, modelo_chuva = semana_wn, "WeatherNext 3 - Google"
+    try:
+        bacia = weathernext.bacia_3dias()
+    except Exception as exc:
+        bacia = None
+        log(f"chuva da bacia indisponível ({type(exc).__name__}).")
+    try:
+        recorde = recorde_chuva(historico)
+    except Exception as exc:
+        recorde = None
+        log(f"ranking de chuva indisponível ({type(exc).__name__}).")
     return {
         "versao": APP_VERSION,
         "fonte": fonte_historico,
@@ -560,8 +626,10 @@ def montar_payload(historico, previsao, fonte_historico, url_historico):
         "janela_historico_horas": JANELA_HISTORICO_HORAS,
         "janela_previsao_horas": JANELA_PREVISAO_HORAS,
         "chuva_7dias": semana_chuva,
-        "chuva_7dias_modelo": MODELO_CHUVA,
+        "chuva_7dias_modelo": modelo_chuva,
         "chuva_7dias_diagnostico": CHUVA_7D_DIAGNOSTICO,
+        "chuva_bacia_3dias": bacia,
+        "chuva_recorde": recorde,
         "avisos_inmet": inmet.bloco_para(IBGE_PAGINA_PRINCIPAL, AVISOS_INMET_ANTERIOR),
     }
 

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 import inmet
+import weathernext
 
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
@@ -513,7 +514,7 @@ def calcular_tendencia(historico):
             "delta": delta, "direcao": direcao}
 
 
-def montar_payload(cidade, historico, semana, motivo_chuva=None, avisos_anterior=None):
+def montar_payload(cidade, historico, semana, motivo_chuva=None, avisos_anterior=None, modelo=MODELO_CHUVA):
     ultima = historico[-1] if historico else None
     return {
         "slug": cidade["slug"],
@@ -529,7 +530,7 @@ def montar_payload(cidade, historico, semana, motivo_chuva=None, avisos_anterior
         "ultima": ultima,
         "tendencia": calcular_tendencia(historico),
         "chuva_7dias": semana,
-        "chuva_7dias_modelo": MODELO_CHUVA,
+        "chuva_7dias_modelo": modelo,
         "chuva_7dias_diagnostico": motivo_chuva,
         "avisos_inmet": inmet.bloco_para(cidade.get("ibge") or (), avisos_anterior),
         "cotas_bairros": cidade.get("enchentes") or [],
@@ -629,12 +630,20 @@ def main():
         anterior_hist = ((anterior or {}).get("dados") or {}).get("historico") or []
         historico = mesclar_historico(historico, anterior_hist)
         semana, motivo_chuva = buscar_chuva_7dias(cidade)
+        modelo = MODELO_CHUVA
+        try:
+            semana_wn = weathernext.semana_para(cidade["slug"], historico)
+        except Exception as exc:
+            semana_wn = None
+            log(f"{cidade['slug']}: WeatherNext 3 indisponível ({type(exc).__name__})")
+        if semana_wn:
+            semana, modelo = semana_wn, "WeatherNext 3 - Google"
         if not semana:
             semana = aproveitar_chuva_anterior(anterior)
             if semana:
                 motivo_chuva = f"{motivo_chuva or 'sem resposta'}; mantida a ultima previsao valida"
         payload = {"ok": True, "erro": None,
-                   "dados": montar_payload(cidade, historico, semana, motivo_chuva, ((anterior or {}).get("dados") or {}).get("avisos_inmet"))}
+                   "dados": montar_payload(cidade, historico, semana, motivo_chuva, ((anterior or {}).get("dados") or {}).get("avisos_inmet"), modelo)}
         caminho.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         log(f"{cidade['slug']}: gravado ({payload['dados']['ultima']['data_hora']})")
 

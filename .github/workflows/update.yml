@@ -40,9 +40,18 @@ jobs:
           PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
         run: |
           mkdir -p public/cidades
-          for ARQ in data.json historico_diario.csv cidades.json chuva-montante.json cidades/porto-vitoria.json cidades/sao-mateus-do-sul.json cidades/fluviopolis.json; do
+          for ARQ in data.json chuva-recordes.json weathernext.json weathernext-sinotica.json historico_diario.csv cidades.json chuva-montante.json cidades/porto-vitoria.json cidades/sao-mateus-do-sul.json cidades/fluviopolis.json; do
             curl -sf -H "Authorization: token ${PRIVATE_REPO_PAT}" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/thiagoiwanko/rioiguacu/contents/public/${ARQ}" -o "public/${ARQ}" || rm -f "public/${ARQ}"
           done
+
+      - name: Instalar dependências WeatherNext
+        run: pip install --require-hashes -r requirements-weathernext.txt
+
+      - name: WeatherNext 3
+        continue-on-error: true
+        env:
+          WEATHERNEXT_CREDENCIAL: ${{ secrets.WEATHERNEXT_CREDENCIAL }}
+        run: python weathernext.py
 
       - name: Rodar coleta
         env:
@@ -68,17 +77,21 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p public/cidades
           cp "$SRC/data.json" public/data.json
+          cp "$SRC/weathernext.json" "$SRC/weathernext-sinotica.json" "$SRC/chuva-recordes.json" public/ 2>/dev/null || true
           cp "$SRC/historico_diario.csv" public/historico_diario.csv
           cp "$SRC/cidades.json" public/cidades.json 2>/dev/null || true
           cp "$SRC/chuva-montante.json" public/chuva-montante.json 2>/dev/null || true
           cp "$SRC"/cidades/*.json public/cidades/ 2>/dev/null || true
           git add public/data.json public/historico_diario.csv public/cidades.json public/cidades
           git add public/chuva-montante.json 2>/dev/null || true
+          git add public/weathernext.json public/weathernext-sinotica.json 2>/dev/null || true
+          git add public/chuva-recordes.json 2>/dev/null || true
           if git diff --staged --quiet; then
             exit 0
           fi
           mkdir -p /tmp/coleta_atual/cidades
           cp public/data.json /tmp/coleta_atual/
+          cp public/weathernext.json public/weathernext-sinotica.json public/chuva-recordes.json /tmp/coleta_atual/ 2>/dev/null || true
           cp public/historico_diario.csv /tmp/coleta_atual/
           cp public/cidades.json /tmp/coleta_atual/ 2>/dev/null || true
           cp public/chuva-montante.json /tmp/coleta_atual/ 2>/dev/null || true
@@ -92,12 +105,15 @@ jobs:
             git reset --hard origin/main
             mkdir -p public/cidades
             cp /tmp/coleta_atual/data.json public/
+            cp /tmp/coleta_atual/weathernext.json /tmp/coleta_atual/weathernext-sinotica.json /tmp/coleta_atual/chuva-recordes.json public/ 2>/dev/null || true
             cp /tmp/coleta_atual/historico_diario.csv public/
             cp /tmp/coleta_atual/cidades.json public/ 2>/dev/null || true
             cp /tmp/coleta_atual/chuva-montante.json public/ 2>/dev/null || true
             cp /tmp/coleta_atual/cidades/*.json public/cidades/ 2>/dev/null || true
             git add public/data.json public/historico_diario.csv public/cidades.json public/cidades
             git add public/chuva-montante.json 2>/dev/null || true
+            git add public/weathernext.json public/weathernext-sinotica.json 2>/dev/null || true
+            git add public/chuva-recordes.json 2>/dev/null || true
             sleep $((RANDOM % 10 + 3))
           done
           exit 1
