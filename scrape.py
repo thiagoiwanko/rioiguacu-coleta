@@ -3,6 +3,7 @@ import json
 import os
 import re
 import time
+from decimal import ROUND_HALF_UP, Decimal
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -42,6 +43,10 @@ RECORDES_CHUVA_BASE = {
 URL_HISTORICO_COPEL = "https://www.copel.com/mhbweb/paginas/bacia-iguacu.jsf"
 URL_HISTORICO_ANA = "https://www.snirh.gov.br/hidrotelemetria/"
 URL_PREVISAO = "https://www.copel.com/mhbweb/paginas/previsao.jsf"
+URL_PREVISAO_SIMEPAR = (
+    "http://www2.simepar.br/prognozweb/uniao_da_vitoria/sispshi_fore_chart"
+    "?location_id=9&sensorOP=7_4%2C33_1%2C18_1&periodicity=hourly"
+)
 PUBLICAR_PREVISAO = os.environ.get("PUBLICAR_PREVISAO", "1") == "1"
 
 ANA_BASE = "https://www.ana.gov.br/hidrowebservice"
@@ -49,7 +54,9 @@ ANA_CODIGO_ESTACAO = 65310001
 ANA_ZERO_REGUA_M = 739.61
 
 JANELA_HISTORICO_HORAS = 48
-JANELA_PREVISAO_HORAS = 48
+JANELA_PREVISAO_HORAS = 72
+JANELA_ALERTA_HORAS = 48
+JANELA_TENDENCIA_HORAS = 240
 TIMEOUT_COLETA_SEGUNDOS = 90
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
@@ -341,6 +348,50 @@ def extrair_ultimo_valor_considerado(texto):
         return None
 
 
+def coletar_previsao_simepar():
+    resp = requests.get(URL_PREVISAO_SIMEPAR, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    dados = resp.json()
+    series = {}
+    for s in dados.get("series") or []:
+        if s.get("yAxis") in (1, 2):
+            continue
+        nome = s.get("name")
+        if nome in ("Ze50", "Zp0", "Ze25 - Ze75") and nome not in series:
+            series[nome] = {int(p[0]): p[1:] for p in s.get("data") or []}
+    if "Ze50" not in series:
+        raise RuntimeError("série Ze50 ausente na previsão do Simepar")
+    def br(ms):
+        return datetime.fromtimestamp(ms / 1000, FUSO_BR).replace(tzinfo=None)
+    ultimo = (dados.get("plot") or {}).get("timestamp")
+    ultimo_valor = br(ultimo) if ultimo else None
+    base = ultimo_valor or agora_br()
+    limite = base + timedelta(hours=JANELA_PREVISAO_HORAS)
+    limite_tendencia = base + timedelta(hours=JANELA_TENDENCIA_HORAS)
+    previsao = []
+    tendencia = []
+    for ms in sorted(series["Ze50"]):
+        quando = br(ms)
+        if quando > limite_tendencia:
+            continue
+        def valor(nome, i=0):
+            v = series.get(nome, {}).get(ms)
+            return float(Decimal(str(v[i])).quantize(Decimal("0.01"), ROUND_HALF_UP)) if v and v[i] is not None else None
+        ponto = {
+            "data_hora": iso(quando),
+            "regua_com_chuva_m": valor("Ze50"),
+            "regua_sem_chuva_m": valor("Zp0"),
+            "faixa_25_m": valor("Ze25 - Ze75", 0),
+            "faixa_75_m": valor("Ze25 - Ze75", 1),
+        }
+        if ponto["regua_com_chuva_m"] is None:
+            continue
+        (previsao if quando <= limite else tendencia).append(ponto)
+    if not previsao:
+        raise RuntimeError("previsão do Simepar vazia")
+    return previsao, tendencia, ultimo_valor
+
+
 def _fingerprint_previsao(previsao_bruta):
     bruto = "|".join(
         f"{item['data_hora']}:{item.get('regua_com_chuva_m')}:{item.get('regua_sem_chuva_m')}"
@@ -425,7 +476,7 @@ def verificar_alerta_previsao(historico, previsao):
     if not historico or not previsao:
         return "Sem previsão disponível para as próximas 48 horas."
     agora_base = datetime.fromisoformat(historico[-1]["data_hora"])
-    alvo = agora_base + timedelta(hours=JANELA_PREVISAO_HORAS)
+    alvo = agora_base + timedelta(hours=JANELA_ALERTA_HORAS)
     futuros = [item for item in previsao if datetime.fromisoformat(item["data_hora"]) > agora_base]
     if not futuros:
         return "Sem previsão disponível para as próximas 48 horas."
@@ -687,17 +738,26 @@ def coletar_uma_vez(
     historico = mesclar_historico(historico, historico_anterior)
 
     previsao_bruta = []
+    tendencia_bruta = []
     ultimo_valor_considerado = None
     try:
-        texto_previsao = coletar_texto(URL_PREVISAO)
-        previsao_bruta = extrair_previsao(texto_previsao)
-        ultimo_valor_considerado = extrair_ultimo_valor_considerado(texto_previsao)
+        previsao_bruta, tendencia_bruta, ultimo_valor_considerado = coletar_previsao_simepar()
         log(
-            f"Previsões extraídas: {len(previsao_bruta)}; "
-            f"último valor considerado: {ultimo_valor_considerado}"
+            f"Previsões do Simepar: {len(previsao_bruta)}; "
+            f"última leitura considerada: {ultimo_valor_considerado}"
         )
     except Exception as exc:
-        log(f"Previsão indisponível: {exc}")
+        log(f"Previsão do Simepar indisponível ({type(exc).__name__}); usando a página da Copel.")
+        try:
+            texto_previsao = coletar_texto(URL_PREVISAO)
+            previsao_bruta = extrair_previsao(texto_previsao)
+            ultimo_valor_considerado = extrair_ultimo_valor_considerado(texto_previsao)
+            log(
+                f"Previsões extraídas: {len(previsao_bruta)}; "
+                f"último valor considerado: {ultimo_valor_considerado}"
+            )
+        except Exception as exc2:
+            log(f"Previsão indisponível: {exc2}")
 
     if ultimo_valor_considerado is not None and (ultimo_valor_considerado - agora_br()) > timedelta(minutes=TOLERANCIA_RELOGIO_MINUTOS):
         log(
@@ -732,6 +792,7 @@ def coletar_uma_vez(
             "nesta rodada, pra não desenhar o 'dente' no gráfico."
         )
         previsao_publicada = []
+        tendencia_bruta = []
         previsao_motivo_suprimida = "desatualizada"
     else:
         ultima_medicao = historico[-1]["data_hora"] if historico else None
@@ -747,6 +808,7 @@ def coletar_uma_vez(
     payload["previsao_fingerprint"] = previsao_fingerprint
     payload["previsao_atualizada_em"] = iso(previsao_atualizada_em) if previsao_atualizada_em else None
     payload["previsao_motivo_suprimida"] = previsao_motivo_suprimida
+    payload["previsao_tendencia"] = tendencia_bruta if previsao_publicada else []
     return payload
 
 
