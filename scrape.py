@@ -370,9 +370,10 @@ def coletar_previsao_simepar():
     limite_tendencia = base + timedelta(hours=JANELA_TENDENCIA_HORAS)
     previsao = []
     tendencia = []
+    passos = [ms for ms in sorted(series["Ze50"]) if br(ms) > base]
     for ms in sorted(series["Ze50"]):
         quando = br(ms)
-        if quando > limite_tendencia:
+        if quando > limite_tendencia or (passos and ms == passos[0]):
             continue
         def valor(nome, i=0):
             v = series.get(nome, {}).get(ms)
