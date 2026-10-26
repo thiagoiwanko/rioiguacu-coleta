@@ -186,6 +186,15 @@ def _parse_data_hora_ana(valor):
     return datetime.strptime(valor, "%Y-%m-%d %H:%M:%S")
 
 
+def _numero_ana(valor):
+    if valor is None or str(valor).strip() == "":
+        return None
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
 def coletar_via_ana():
     identificador = os.environ.get("ANA_API_LOGIN")
     senha = os.environ.get("ANA_API_SENHA")
@@ -216,14 +225,20 @@ def coletar_via_ana():
         historico = []
         chuva_acumulada = 0.0
         for item in itens:
-            regua_m = round(float(item["Cota_Adotada"]) / 100, 3)
-            chuva_mm = round(float(item.get("Chuva_Adotada", 0) or 0), 1)
-            chuva_acumulada = round(chuva_acumulada + chuva_mm, 1)
+            cota = _numero_ana(item.get("Cota_Adotada"))
+            if cota is None:
+                continue
+            regua_m = round(cota / 100, 3)
+            chuva = _numero_ana(item.get("Chuva_Adotada"))
+            chuva_mm = None if chuva is None else round(chuva, 1)
+            if chuva_mm is not None:
+                chuva_acumulada = round(chuva_acumulada + chuva_mm, 1)
+            vazao = _numero_ana(item.get("Vazao_Adotada"))
             historico.append({
                 "data_hora": iso(_parse_data_hora_ana(item["Data_Hora_Medicao"])),
                 "regua_m": regua_m,
                 "nivel_agua_m": round(regua_m + ANA_ZERO_REGUA_M, 3),
-                "vazao_m3s": int(float(item.get("Vazao_Adotada", 0) or 0)),
+                "vazao_m3s": None if vazao is None else int(vazao),
                 "chuva_mm": chuva_mm,
                 "chuva_acumulada_mm": chuva_acumulada,
             })
@@ -858,7 +873,7 @@ def atualizar_historico_diario(payload):
                 f"{max(niveis):.3f}",
                 f"{min(niveis):.3f}",
                 f"{ultimo['regua_m']:.3f}",
-                str(ultimo.get("vazao_m3s", "")),
+                "" if ultimo.get("vazao_m3s") is None else str(ultimo["vazao_m3s"]),
                 fonte_curta,
             ]
 
