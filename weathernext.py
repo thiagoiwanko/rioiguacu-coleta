@@ -26,6 +26,7 @@ BANDAS = tuple(f"{banda}_{e}" for _, banda in VERSOES for e in ESTATISTICAS)
 CAMPOS = tuple(f"{nome}_{e}" for nome, _ in VERSOES for e in ESTATISTICAS)
 HORAS_HORARIA = 48
 HORAS_SINOTICA = 360
+DIAS_CARTAO = 15  # dias publicados no cartão do site (7 visíveis, o resto rola para o lado)
 LIMITE_EXTRACOES_DIA = int(os.environ.get("WEATHERNEXT_LIMITE_DIA", "32"))
 AUSENTE = -9999.0
 
@@ -185,7 +186,7 @@ def resumo(estado, agora):
                 semana.append({"data": dia.isoformat(), "restante_mm": round(restante, 1)})
             elif n == 24:
                 semana.append({"data": dia.isoformat(), "chuva_mm": round(soma, 1)})
-        saida[slug] = {"codigo": cod, "nome": nome, "dias": semana[:7]}
+        saida[slug] = {"codigo": cod, "nome": nome, "dias": semana[:DIAS_CARTAO]}
     return saida
 
 
@@ -230,7 +231,7 @@ def semana_para(slug, historico, agora=None):
                            "chuva_restante_mm": restante, "fonte": "WeatherNext 3"})
         else:
             semana.append({"data": dia["data"], "chuva_mm": dia["chuva_mm"], "fonte": "WeatherNext 3"})
-    return semana[:7]
+    return semana[:DIAS_CARTAO]
 
 
 def _media_checada(valores):
