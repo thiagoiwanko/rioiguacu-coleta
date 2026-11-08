@@ -190,6 +190,23 @@ def resumo(estado, agora):
     return saida
 
 
+def guardar_vespera(estado, novo_inicio):
+    """Na primeira rodada horária de um dia novo, guarda a última rodada do dia anterior (só as horas
+    do dia novo, chuva experimental_mean) para o site comparar o que era previsto com o que choveu."""
+    antiga = estado.get("rodada_horaria") or {}
+    if not antiga.get("inicio_utc"):
+        return
+    dia_novo = novo_inicio.astimezone(FUSO).date()
+    if ler_data(antiga["inicio_utc"]).astimezone(FUSO).date() >= dia_novo:
+        return
+    pontos = {}
+    for cod, linhas in (antiga.get("pontos") or {}).items():
+        pontos[cod] = [{"valido_utc": l["valido_utc"], "experimental_mean": l.get("experimental_mean")}
+                       for l in linhas
+                       if (ler_data(l["valido_utc"]).astimezone(FUSO) - timedelta(seconds=1)).date() == dia_novo]
+    estado["rodada_vespera"] = {"inicio_utc": antiga["inicio_utc"], "dia": dia_novo.isoformat(), "pontos": pontos}
+
+
 def ler(caminho):
     if caminho.exists():
         try:
@@ -302,6 +319,8 @@ def main():
                 log(f"{chave}: limite diário de extrações atingido")
                 continue
             contagem["n"] += 1
+            if chave == "rodada_horaria":
+                guardar_vespera(estado, inicio)
             estado[chave] = {"inicio_utc": iso(inicio), "horas": horas, "extraido_utc": iso(agora), "pontos": extrair(ee, inicio, horas)}
             log(f"{chave}: {iso(inicio)} extraída")
     except Exception as erro:
