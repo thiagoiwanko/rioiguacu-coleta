@@ -217,12 +217,16 @@ def semana_para(slug, historico, agora=None):
     estado = carregar()
     if not disponivel(estado, agora):
         return None
-    cidade = resumo(estado, agora).get(slug)
+    hoje = agora.astimezone(FUSO).date().isoformat()
+    medidas = [x for x in (historico or []) if str(x.get("data_hora", "")).startswith(hoje)]
+    caiu = round(sum(float(x.get("chuva_mm") or 0) for x in medidas), 1)
+    # A previsão de hoje começa logo depois da última hora medida, não em "agora": a leitura da estação
+    # chega com atraso, e cortar em "agora" deixava a hora entre a última leitura e agora fora do total.
+    lidas = [x for x in medidas if x.get("chuva_mm") is not None]
+    corte = datetime.fromisoformat(max(x["data_hora"] for x in lidas)).replace(tzinfo=FUSO) if lidas else agora
+    cidade = resumo(estado, min(corte, agora)).get(slug)
     if not cidade or len(cidade["dias"]) < 7:
         return None
-    hoje = agora.astimezone(FUSO).date().isoformat()
-    caiu = round(sum(float(x.get("chuva_mm") or 0) for x in (historico or [])
-                     if str(x.get("data_hora", "")).startswith(hoje)), 1)
     semana = []
     for dia in cidade["dias"]:
         if dia["data"] == hoje:
