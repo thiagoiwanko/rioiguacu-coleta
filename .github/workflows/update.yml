@@ -57,12 +57,16 @@ jobs:
         env:
           ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
           ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
+          ANA_API_LOGIN_2: ${{ secrets.ANA_API_LOGIN_2 }}
+          ANA_API_SENHA_2: ${{ secrets.ANA_API_SENHA_2 }}
         run: python scrape.py
 
       - name: Rodar coleta das outras cidades
         env:
           ANA_API_LOGIN: ${{ secrets.ANA_API_LOGIN }}
           ANA_API_SENHA: ${{ secrets.ANA_API_SENHA }}
+          ANA_API_LOGIN_2: ${{ secrets.ANA_API_LOGIN_2 }}
+          ANA_API_SENHA_2: ${{ secrets.ANA_API_SENHA_2 }}
           CIDADES_INTERVALO_MIN: ${{ inputs.forcar_cidades == true && '0' || '55' }}
         run: python cidades.py
 

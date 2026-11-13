@@ -154,8 +154,19 @@ def _ana_token_valido():
     return None
 
 
-def _ana_autenticar(identificador, senha):
-    token = _ana_token_valido()
+def _ana_credenciais():
+    """Login principal e, quando configurado, o de reserva (só entra se a ANA recusar o principal)."""
+    pares = []
+    for sufixo in ("", "_2"):
+        identificador = os.environ.get("ANA_API_LOGIN" + sufixo)
+        senha = os.environ.get("ANA_API_SENHA" + sufixo)
+        if identificador and senha:
+            pares.append((identificador, senha))
+    return pares
+
+
+def _ana_autenticar(identificador, senha, usar_cache=True):
+    token = _ana_token_valido() if usar_cache else None
     if token:
         return token
 
@@ -195,61 +206,74 @@ def _numero_ana(valor):
         return None
 
 
+def _coletar_via_ana_com(identificador, senha, usar_cache):
+    token = _ana_autenticar(identificador, senha, usar_cache)
+    query = _ana_query_string({
+        "Código da Estação": ANA_CODIGO_ESTACAO,
+        "Tipo Filtro Data": "DATA_LEITURA",
+        "Range Intervalo de busca": "DIAS_2",
+    })
+    resp = requests.get(
+        f"{ANA_BASE}/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1?{query}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    itens = payload.get("items") or []
+    if payload.get("code") != 200 or not itens:
+        log(f"ANA: resposta sem itens utilizáveis ({payload.get('message')}); usando Copel.")
+        return None
+
+    itens = sorted(itens, key=lambda item: item["Data_Hora_Medicao"])
+    historico = []
+    chuva_acumulada = 0.0
+    for item in itens:
+        cota = _numero_ana(item.get("Cota_Adotada"))
+        if cota is None:
+            continue
+        regua_m = round(cota / 100, 3)
+        chuva = _numero_ana(item.get("Chuva_Adotada"))
+        chuva_mm = None if chuva is None else round(chuva, 1)
+        if chuva_mm is not None:
+            chuva_acumulada = round(chuva_acumulada + chuva_mm, 1)
+        vazao = _numero_ana(item.get("Vazao_Adotada"))
+        historico.append({
+            "data_hora": iso(_parse_data_hora_ana(item["Data_Hora_Medicao"])),
+            "regua_m": regua_m,
+            "nivel_agua_m": round(regua_m + ANA_ZERO_REGUA_M, 3),
+            "vazao_m3s": None if vazao is None else int(vazao),
+            "chuva_mm": chuva_mm,
+            "chuva_acumulada_mm": chuva_acumulada,
+        })
+
+    if not historico:
+        return None
+    log(f"ANA: {len(historico)} medições obtidas com sucesso (estação {ANA_CODIGO_ESTACAO}).")
+    return historico
+
+
 def coletar_via_ana():
-    identificador = os.environ.get("ANA_API_LOGIN")
-    senha = os.environ.get("ANA_API_SENHA")
-    if not identificador or not senha:
+    credenciais = _ana_credenciais()
+    if not credenciais:
         log("ANA: credenciais não configuradas (ANA_API_LOGIN/ANA_API_SENHA); usando Copel.")
         return None
 
-    try:
-        token = _ana_autenticar(identificador, senha)
-        query = _ana_query_string({
-            "Código da Estação": ANA_CODIGO_ESTACAO,
-            "Tipo Filtro Data": "DATA_LEITURA",
-            "Range Intervalo de busca": "DIAS_2",
-        })
-        resp = requests.get(
-            f"{ANA_BASE}/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1?{query}",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=20,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        itens = payload.get("items") or []
-        if payload.get("code") != 200 or not itens:
-            log(f"ANA: resposta sem itens utilizáveis ({payload.get('message')}); usando Copel.")
-            return None
-
-        itens = sorted(itens, key=lambda item: item["Data_Hora_Medicao"])
-        historico = []
-        chuva_acumulada = 0.0
-        for item in itens:
-            cota = _numero_ana(item.get("Cota_Adotada"))
-            if cota is None:
+    for indice, (identificador, senha) in enumerate(credenciais):
+        try:
+            # o login de reserva nunca reaproveita o token em cache do principal
+            return _coletar_via_ana_com(identificador, senha, usar_cache=indice == 0)
+        except requests.HTTPError as exc:
+            # recusa da ANA (bloqueio, cota, senha, instabilidade): tenta uma vez com o login de reserva
+            if indice + 1 < len(credenciais):
+                log(f"ANA: login principal recusado ({exc}); tentando o login de reserva.")
                 continue
-            regua_m = round(cota / 100, 3)
-            chuva = _numero_ana(item.get("Chuva_Adotada"))
-            chuva_mm = None if chuva is None else round(chuva, 1)
-            if chuva_mm is not None:
-                chuva_acumulada = round(chuva_acumulada + chuva_mm, 1)
-            vazao = _numero_ana(item.get("Vazao_Adotada"))
-            historico.append({
-                "data_hora": iso(_parse_data_hora_ana(item["Data_Hora_Medicao"])),
-                "regua_m": regua_m,
-                "nivel_agua_m": round(regua_m + ANA_ZERO_REGUA_M, 3),
-                "vazao_m3s": None if vazao is None else int(vazao),
-                "chuva_mm": chuva_mm,
-                "chuva_acumulada_mm": chuva_acumulada,
-            })
-
-        if not historico:
+            log(f"ANA: falha na coleta ({exc}); usando Copel.")
             return None
-        log(f"ANA: {len(historico)} medições obtidas com sucesso (estação {ANA_CODIGO_ESTACAO}).")
-        return historico
-    except Exception as exc:
-        log(f"ANA: falha na coleta ({exc}); usando Copel.")
-        return None
+        except Exception as exc:
+            log(f"ANA: falha na coleta ({exc}); usando Copel.")
+            return None
+    return None
 
 
 def abrir_navegador():

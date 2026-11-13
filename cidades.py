@@ -231,12 +231,14 @@ def _ana_token_valido():
     return None
 
 
-def _ana_autenticar():
-    identificador = os.environ.get("ANA_API_LOGIN")
-    senha = os.environ.get("ANA_API_SENHA")
+def _ana_autenticar(reserva=False):
+    # reserva=True: segundo login, só usado quando a ANA recusa o principal; nunca reaproveita o token em cache
+    sufixo = "_2" if reserva else ""
+    identificador = os.environ.get("ANA_API_LOGIN" + sufixo)
+    senha = os.environ.get("ANA_API_SENHA" + sufixo)
     if not identificador or not senha:
         return None
-    token = _ana_token_valido()
+    token = None if reserva else _ana_token_valido()
     if token:
         return token
     resp = requests.get(
@@ -585,27 +587,44 @@ def precisa_atualizar(anterior):
     return (agora_br() - quando) >= timedelta(minutes=INTERVALO_MINIMO_MINUTOS)
 
 
+def _coletar_ana_com_reserva():
+    """Coleta com o login principal; se a ANA recusar (erro HTTP), tenta uma vez com o login de reserva.
+
+    Devolve (dados por estação, token usado por último) — o token segue para a chuva a montante.
+    """
+    tem_reserva = bool(os.environ.get("ANA_API_LOGIN_2") and os.environ.get("ANA_API_SENHA_2"))
+    token = None
+    for reserva in (False, True):
+        tentar_reserva = not reserva and tem_reserva
+        try:
+            token = _ana_autenticar(reserva=reserva)
+        except Exception as exc:
+            log(f"ANA: autenticacao falhou ({type(exc).__name__})")
+            token = None
+            if tentar_reserva and isinstance(exc, requests.HTTPError):
+                log("ANA: tentando o login de reserva")
+                continue
+            return {}, None
+        if not token:
+            log("ANA: sem token")
+            return {}, None
+        try:
+            return coletar_todas_via_ana(token), token
+        except Exception as exc:
+            log(f"ANA v2 falhou ({type(exc).__name__})")
+            if tentar_reserva and isinstance(exc, requests.HTTPError):
+                log("ANA: tentando o login de reserva")
+                continue
+            return {}, token
+    return {}, token
+
+
 def main():
     CIDADES_DIR.mkdir(parents=True, exist_ok=True)
     indice = []
     algum_pendente = any(
         precisa_atualizar(ler_anterior(CIDADES_DIR / f"{c['slug']}.json")) for c in CIDADES)
-    por_codigo = {}
-    token = None
-    if algum_pendente:
-        try:
-            token = _ana_autenticar()
-        except Exception as exc:
-            log(f"ANA: autenticacao falhou ({type(exc).__name__})")
-            token = None
-        if token:
-            try:
-                por_codigo = coletar_todas_via_ana(token)
-            except Exception as exc:
-                log(f"ANA v2 falhou ({type(exc).__name__})")
-                por_codigo = {}
-        else:
-            log("ANA: sem token")
+    por_codigo, token = _coletar_ana_com_reserva() if algum_pendente else ({}, None)
     for i, cidade in enumerate(CIDADES):
         caminho = CIDADES_DIR / f"{cidade['slug']}.json"
         anterior = ler_anterior(caminho)
