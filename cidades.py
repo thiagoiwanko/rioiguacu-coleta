@@ -19,6 +19,11 @@ ANA_BASE = "https://www.ana.gov.br/hidrowebservice"
 ANA_TOKEN_CACHE_PATH = BASE_DIR / ".ana_token_cache.json"
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 JANELA_HISTORICO_HORAS = 48
+# Codigo que a ANA manda em Cota_Adotada quando a leitura falhou, e faixa
+# possivel de regua; fora disso a leitura e descartada.
+ANA_COTA_CODIGO_FALHA_CM = 777777.7
+REGUA_MIN_PLAUSIVEL_M = -1.0
+REGUA_MAX_PLAUSIVEL_M = 20.0
 TIMEOUT_SEGUNDOS = 30
 INTERVALO_MINIMO_MINUTOS = int(os.environ.get("CIDADES_INTERVALO_MIN", "55"))
 PAUSA_ENTRE_ESTACOES_S = 8
@@ -370,17 +375,31 @@ def gravar_chuva_montante(token):
         log(f"chuva montante nao gravada ({type(exc).__name__})")
 
 
+def regua_valida(regua_m):
+    return (isinstance(regua_m, (int, float)) and regua_m == regua_m
+            and REGUA_MIN_PLAUSIVEL_M <= regua_m <= REGUA_MAX_PLAUSIVEL_M)
+
+
 def montar_historico(cidade, itens):
     if not itens:
         return None
     zero = cidade.get("zero_regua_m")
     itens = sorted(itens, key=lambda item: item["Data_Hora_Medicao"])
     historico = []
+    descartadas = 0
     for item in itens:
         cota = item.get("Cota_Adotada")
         if cota is None:
             continue
-        regua_m = round(float(cota) / 100, 3)
+        try:
+            cota = float(cota)
+        except (TypeError, ValueError):
+            descartadas += 1
+            continue
+        regua_m = round(cota / 100, 3)
+        if abs(cota - ANA_COTA_CODIGO_FALHA_CM) < 0.05 or not regua_valida(regua_m):
+            descartadas += 1
+            continue
         linha = {
             "data_hora": iso(_parse_data_hora_ana(item["Data_Hora_Medicao"])),
             "regua_m": regua_m,
@@ -392,6 +411,8 @@ def montar_historico(cidade, itens):
         if zero is not None:
             linha["nivel_agua_m"] = round(regua_m + zero, 3)
         historico.append(linha)
+    if descartadas:
+        log(f"{cidade['slug']}: {descartadas} leitura(s) de cota invalida(s) descartada(s)")
     if not historico:
         return None
     limite = agora_br() - timedelta(hours=JANELA_HISTORICO_HORAS)
@@ -560,8 +581,8 @@ def ler_anterior(caminho):
 
 
 def mesclar_historico(novo, anterior):
-    por_hora = {x["data_hora"]: x for x in (anterior or [])}
-    por_hora.update({x["data_hora"]: x for x in novo})
+    por_hora = {x["data_hora"]: x for x in (anterior or []) if regua_valida(x.get("regua_m"))}
+    por_hora.update({x["data_hora"]: x for x in novo if regua_valida(x.get("regua_m"))})
     limite = agora_br() - timedelta(hours=JANELA_HISTORICO_HORAS)
     itens = [x for x in por_hora.values()
              if datetime.fromisoformat(x["data_hora"]) >= limite]

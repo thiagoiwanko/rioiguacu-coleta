@@ -118,6 +118,8 @@ REGUA_MAX_PLAUSIVEL_M = 13.0
 VAZAO_MAX_PLAUSIVEL_M3S = 20000
 CHUVA_MAX_PLAUSIVEL_MM_HORA = 300
 LIMIAR_VARIACAO_IMPOSSIVEL_M_HORA = 1.5
+# Codigo que a ANA manda em Cota_Adotada quando a leitura falhou.
+ANA_COTA_CODIGO_FALHA_CM = 777777.7
 
 
 def log(mensagem):
@@ -197,6 +199,11 @@ def _parse_data_hora_ana(valor):
     return datetime.strptime(valor, "%Y-%m-%d %H:%M:%S")
 
 
+def regua_valida(regua_m):
+    return (isinstance(regua_m, (int, float)) and regua_m == regua_m
+            and REGUA_MIN_PLAUSIVEL_M <= regua_m <= REGUA_MAX_PLAUSIVEL_M)
+
+
 def _numero_ana(valor):
     if valor is None or str(valor).strip() == "":
         return None
@@ -228,11 +235,15 @@ def _coletar_via_ana_com(identificador, senha, usar_cache):
     itens = sorted(itens, key=lambda item: item["Data_Hora_Medicao"])
     historico = []
     chuva_acumulada = 0.0
+    descartadas = 0
     for item in itens:
         cota = _numero_ana(item.get("Cota_Adotada"))
         if cota is None:
             continue
         regua_m = round(cota / 100, 3)
+        if abs(cota - ANA_COTA_CODIGO_FALHA_CM) < 0.05 or not regua_valida(regua_m):
+            descartadas += 1
+            continue
         chuva = _numero_ana(item.get("Chuva_Adotada"))
         chuva_mm = None if chuva is None else round(chuva, 1)
         if chuva_mm is not None:
@@ -247,6 +258,8 @@ def _coletar_via_ana_com(identificador, senha, usar_cache):
             "chuva_acumulada_mm": chuva_acumulada,
         })
 
+    if descartadas:
+        log(f"ANA: {descartadas} leitura(s) de cota inválida(s) descartada(s).")
     if not historico:
         return None
     log(f"ANA: {len(historico)} medições obtidas com sucesso (estação {ANA_CODIGO_ESTACAO}).")
@@ -734,8 +747,8 @@ FONTE_COPEL = "Copel – Monitoramento Hidrológico (fonte redundante, usada qua
 
 
 def mesclar_historico(historico_novo, historico_anterior):
-    por_hora = {item["data_hora"]: item for item in historico_anterior}
-    por_hora.update({item["data_hora"]: item for item in historico_novo})
+    por_hora = {item["data_hora"]: item for item in historico_anterior if regua_valida(item.get("regua_m"))}
+    por_hora.update({item["data_hora"]: item for item in historico_novo if regua_valida(item.get("regua_m"))})
     limite = agora_br() - timedelta(hours=JANELA_HISTORICO_HORAS)
     itens = [item for item in por_hora.values() if datetime.fromisoformat(item["data_hora"]) >= limite]
     itens.sort(key=lambda item: item["data_hora"])
